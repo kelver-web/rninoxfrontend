@@ -15,14 +15,16 @@ export function Dashboard() {
   const { sidenavType } = controller;
 
   return (
-    <div className="min-h-screen bg-blue-gray-50/50">
+    <div className="flex flex-col min-h-screen bg-blue-gray-50/50">
       <Sidenav
         routes={routes}
         brandImg={
-          sidenavType === "dark" ? "/img/logo-ct.png" : "/img/logo-ct-dark.png"
+          sidenavType === "dark"
+            ? "/img/logo-rn-inox.png"
+            : "/img/logo-rn-inox.png"
         }
       />
-      <div className="p-4 xl:ml-80">
+      <div className="flex flex-col flex-grow p-4 xl:ml-80">
         <DashboardNavbar />
         <Configurator />
         <IconButton
@@ -34,15 +36,20 @@ export function Dashboard() {
         >
           <Cog6ToothIcon className="h-5 w-5" />
         </IconButton>
-        <Routes>
-          {routes.map(
-            ({ layout, pages }) =>
-              layout === "dashboard" &&
-              pages.map(({ path, element }) => (
-                <Route exact path={path} element={element} />
-              ))
-          )}
-        </Routes>
+
+        {/* Conteúdo que cresce e empurra o footer */}
+        <div className="flex-grow">
+          <Routes>
+            {routes.map(
+              ({ layout, pages }) =>
+                layout === "dashboard" &&
+                pages.map(({ path, element }) => (
+                  <Route key={path} exact path={path} element={element} />
+                ))
+            )}
+          </Routes>
+        </div>
+
         <div className="text-blue-gray-600">
           <Footer />
         </div>

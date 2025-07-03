@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Typography,
   Card,
@@ -9,112 +9,279 @@ import {
   MenuHandler,
   MenuList,
   MenuItem,
-  Avatar,
-  Tooltip,
   Progress,
 } from "@material-tailwind/react";
 import {
   EllipsisVerticalIcon,
-  ArrowUpIcon,
+  TrophyIcon
 } from "@heroicons/react/24/outline";
-import { StatisticsCard } from "@/widgets/cards";
-import { StatisticsChart } from "@/widgets/charts";
 import {
-  statisticsCardsData,
-  statisticsChartsData,
-  projectsTableData,
-  ordersOverviewData,
-} from "@/data";
-import { CheckCircleIcon, ClockIcon } from "@heroicons/react/24/solid";
+  ClockIcon,
+  CheckCircleIcon,
+  BuildingOfficeIcon,
+  ClipboardDocumentCheckIcon,
+} from "@heroicons/react/24/solid";
+import { StatisticsChart } from "@/widgets/charts";
+import api from "@/services/api";
+import { toast } from "react-toastify";
+
 
 export function Home() {
+  const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [teamRanking, setTeamRanking] = useState([]);
+  const [tasksByStatusChartData, setTasksByStatusChartData] = useState({
+    labels: [],
+    data: [],
+  });
+  const [allMonthlyTasksData, setAllMonthlyTasksData] = useState([]);
+  const [recentActivities, setRecentActivities] = useState([]);
+
+  const taskStatusMap = {
+    'a_fazer': 'A Fazer',
+    'em_andamento': 'Em Andamento',
+    'concluida': 'Concluída',
+    'cancelada': 'Cancelada',
+  };
+
+  const allTaskStatusesKeys = Object.keys(taskStatusMap);
+
+  const fetchDashboardSummary = async () => {
+    try {
+      const response = await api.get("/dashboard/summary/"); 
+      setDashboardSummary(response.data);
+
+      const statusDataFromBackend = response.data?.tasks_by_status || {};
+      const chartLabels = [];
+      const chartData = [];
+
+      allTaskStatusesKeys.forEach(statusKey => {
+        const displayedName = taskStatusMap[statusKey];
+        const count = statusDataFromBackend[statusKey] || 0;
+
+        chartLabels.push(displayedName);
+        chartData.push(count);
+      });
+
+      setTasksByStatusChartData({
+        labels: chartLabels,
+        data: chartData,
+      });
+
+      let monthlyData = response.data?.monthly_tasks || [];
+      monthlyData.sort((a, b) => new Date(a.mes) - new Date(b.mes));
+      setAllMonthlyTasksData(monthlyData);
+
+    } catch (error) {
+      console.error("Erro ao carregar resumo do dashboard:", error.response ? error.response.data : error.message);
+      toast.error("Erro ao carregar resumo do dashboard.");
+    }
+  };
+
+  const fetchTeamRanking = async () => {
+    try {
+      const response = await api.get("/dashboard/teams/ranking/tasks_completed/");
+      setTeamRanking(response.data);
+    } catch (error) {
+      console.error("Erro ao carregar ranking de equipes:", error.response ? error.response.data : error.message);
+      toast.error("Erro ao carregar ranking de equipes.");
+    }
+  };
+
+  const fetchRecentActivities = async () => {
+    try {
+      const tasksResponse = await api.get("/tasks/?status=concluida&limit=7&ordering=-completed_at");
+      setRecentActivities(tasksResponse.data);
+    } catch (error) {
+      console.error("Erro ao carregar atividades recentes:", error.response ? error.response.data : error.message);
+      toast.error("Erro ao carregar atividades recentes.");
+    }
+  };
+
+  useEffect(() => {
+    fetchDashboardSummary();
+    fetchTeamRanking();
+    fetchRecentActivities();
+  }, []);
+
+  const monthlyTasksChartData = useMemo(() => {
+    if (allMonthlyTasksData.length === 0) {
+      return { labels: [], data: [], total_tasks_completed_this_month: 0 };
+    }
+
+    const labels = allMonthlyTasksData.map(item => {
+        const [year, month, day] = item.mes.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        
+        return date.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
+    });
+
+    const data = allMonthlyTasksData.map(item => item.count);
+    
+    const total_tasks_completed_this_month = allMonthlyTasksData.length > 0
+        ? allMonthlyTasksData[allMonthlyTasksData.length - 1].count
+        : 0;
+
+    console.log("Monthly Chart Data preparado para ApexCharts (FINALMENTE):", { labels, data, total_tasks_completed_this_month });
+
+    return { labels, data, total_tasks_completed_this_month };
+  }, [allMonthlyTasksData]);
+
+  const customStatisticsChartsData = [
+    {
+      color: "white",
+      icon: <ClipboardDocumentCheckIcon className="w-8 h-8 text-white" />,
+      title: "Tarefas por Status",
+      value: dashboardSummary?.total_tasks !== undefined ? dashboardSummary.total_tasks.toLocaleString('pt-BR') : "N/A",
+      description: "Distribuição atual das tarefas",
+      chart: {
+        type: "pie",
+        height: 280,
+        series: tasksByStatusChartData.data,
+        options: {
+          labels: tasksByStatusChartData.labels,
+          colors: ["#42A5F5", "#66BB6A", "#FFA726", "#EF5350"],
+          legend: {
+            show: true,
+            position: 'bottom',
+            labels: { colors: "#424242" },
+            fontFamily: 'Roboto, sans-serif',
+            fontSize: '14px',
+            markers: { radius: 6 },
+            itemMargin: { horizontal: 20 },
+          },
+          dataLabels: {
+            enabled: true,
+            formatter: function (val, opts) {
+              const label = opts.w.config.labels[opts.seriesIndex] || "N/A";
+              if (val > 0) { return `${label}: ${val.toFixed(0)}%`; }
+              return '';
+            },
+            style: { colors: ['#616161'], fontSize: '13px', fontFamily: 'Roboto, sans-serif', fontWeight: 'bold' },
+            dropShadow: { enabled: true, top: 1, left: 1, blur: 2, color: '#616161', opacity: 0.5 }
+          },
+          stroke: { show: true, width: 3, colors: ['#fff'] },
+          plotOptions: {
+            pie: {
+              donut: {
+                size: '60%',
+                labels: {
+                  show: true, name: { show: true, fontSize: '16px', fontFamily: 'Roboto, sans-serif', color: '#616161' },
+                  value: { show: true, fontSize: '22px', fontFamily: 'Roboto, sans-serif', color: '#333', formatter: function (val) { return `${val}`; } },
+                  total: { show: true, showAlways: true, label: 'Total', fontSize: '18px', fontFamily: 'Roboto, sans-serif', color: '#616161', formatter: function (w) { return w.globals.series.reduce((a, b) => a + b, 0); } }
+                }
+              },
+              expandOnClick: false,
+            }
+          },
+          tooltip: { fillSeriesColor: false, theme: 'dark', style: { fontSize: '14px', fontFamily: 'Roboto, sans-serif' } },
+          responsive: [{ breakpoint: 480, options: { chart: { width: 200 }, legend: { position: 'bottom' } } }]
+        },
+      },
+      footer: (
+        <Typography variant="small" className="flex items-center font-normal text-blue-gray-600">
+          <ClockIcon strokeWidth={2} className="h-4 w-4 text-blue-gray-400 mr-1" />
+          {`Atualizado em ${new Date().toLocaleDateString('pt-BR')}`}
+        </Typography>
+      ),
+    },
+    {
+      color: "white",
+      icon: <ClockIcon className="w-8 h-8 text-white" />,
+      title: "Tarefas Concluídas por Mês",
+      value: monthlyTasksChartData.total_tasks_completed_this_month.toLocaleString('pt-BR'),
+      description: "Desempenho de conclusão de tarefas nos últimos meses",
+      chart: {
+        type: "line",
+        height: 220,
+        series: [{ name: "Concluídas", data: monthlyTasksChartData.data }],
+        options: {
+          chart: { toolbar: { show: false }, zoom: { enabled: false } },
+          colors: ["#009688"],
+          stroke: { curve: 'smooth', width: 5, lineCap: 'round' },
+          markers: { size: 6, colors: ['#009688'], strokeColors: '#fff', strokeWidth: 3, hover: { size: 8 } },
+          xaxis: {
+            categories: monthlyTasksChartData.labels,
+            labels: { style: { colors: "#546E7A", fontSize: '13px', fontFamily: 'Roboto, sans-serif' } },
+            axisBorder: { show: true, color: '#E0E0E0' },
+            axisTicks: { show: true, color: '#BDBDBD' },
+          },
+          yaxis: {
+            title: { text: 'Número de Tarefas', style: { color: "#546E7A", fontSize: '15px', fontWeight: 600, fontFamily: 'Roboto, sans-serif' } },
+            labels: { style: { colors: "#546E7A", fontSize: '13px', fontFamily: 'Roboto, sans-serif' } },
+            min: 0,
+          },
+          dataLabels: { enabled: false },
+          tooltip: { x: { format: 'MMM yy' }, y: { formatter: function (val) { return `${val} tarefas`; } }, theme: 'dark', style: { fontSize: '14px', fontFamily: 'Roboto, sans-serif' } },
+          grid: { show: true, borderColor: '#E0E0E0', strokeDashArray: 0, position: 'back', xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
+        },
+      },
+      footer: (
+        <Typography variant="small" className="flex items-center font-normal text-blue-gray-600">
+          <ClockIcon strokeWidth={2} className="h-4 w-4 text-blue-gray-400 mr-1" />
+          {`Dados dos últimos ${monthlyTasksChartData.labels.length} meses`}
+        </Typography>
+      ),
+    },
+  ];
+
   return (
-    <div className="mt-12">
-      <div className="mb-12 grid gap-y-10 gap-x-6 md:grid-cols-2 xl:grid-cols-4">
-        {statisticsCardsData.map(({ icon, title, footer, ...rest }) => (
-          <StatisticsCard
-            key={title}
-            {...rest}
-            title={title}
-            icon={React.createElement(icon, {
-              className: "w-6 h-6 text-white",
-            })}
-            footer={
-              <Typography className="font-normal text-blue-gray-600">
-                <strong className={footer.color}>{footer.value}</strong>
-                &nbsp;{footer.label}
-              </Typography>
-            }
-          />
-        ))}
-      </div>
-      <div className="mb-6 grid grid-cols-1 gap-y-12 gap-x-6 md:grid-cols-2 xl:grid-cols-3">
-        {statisticsChartsData.map((props) => (
+    <div className="mt-12 mb-8 flex flex-col gap-12">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-2">
+        {customStatisticsChartsData.map((props, index) => (
           <StatisticsChart
-            key={props.title}
+            key={props.title + index}
             {...props}
-            footer={
-              <Typography
-                variant="small"
-                className="flex items-center font-normal text-blue-gray-600"
-              >
-                <ClockIcon strokeWidth={2} className="h-4 w-4 text-blue-gray-400" />
-                &nbsp;{props.footer}
-              </Typography>
-            }
           />
         ))}
       </div>
-      <div className="mb-4 grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <Card className="overflow-hidden xl:col-span-2 border border-blue-gray-100 shadow-sm">
+
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <Card className="xl:col-span-2 shadow-xl border border-blue-gray-50/10 rounded-xl">
           <CardHeader
             floated={false}
             shadow={false}
             color="transparent"
-            className="m-0 flex items-center justify-between p-6"
+            className="m-0 p-6 pb-4"
           >
-            <div>
-              <Typography variant="h6" color="blue-gray" className="mb-1">
-                Projects
-              </Typography>
-              <Typography
-                variant="small"
-                className="flex items-center gap-1 font-normal text-blue-gray-600"
-              >
-                <CheckCircleIcon strokeWidth={3} className="h-4 w-4 text-blue-gray-200" />
-                <strong>30 done</strong> this month
-              </Typography>
+            <div className="flex items-center justify-between">
+                <div>
+                    <Typography variant="h5" color="blue-gray" className="mb-1 font-bold">
+                        Ranking de Equipes (Tarefas Concluídas)
+                    </Typography>
+                    <Typography
+                        variant="small"
+                        className="flex items-center gap-1 font-normal text-blue-gray-600"
+                    >
+                        <BuildingOfficeIcon strokeWidth={2} className="h-4 w-4 text-blue-gray-400 mr-1" />
+                        Desempenho atual das equipes.
+                    </Typography>
+                </div>
+                <Menu placement="left-start">
+                    <MenuHandler>
+                        <IconButton size="sm" variant="text" color="blue-gray">
+                            <EllipsisVerticalIcon strokeWidth={3} className="h-6 w-6" />
+                        </IconButton>
+                    </MenuHandler>
+                    <MenuList>
+                        <MenuItem className="hover:bg-blue-gray-50 text-blue-gray-700">Ver todos os rankings</MenuItem>
+                        <MenuItem className="hover:bg-blue-gray-50 text-blue-gray-700">Configurar período</MenuItem>
+                    </MenuList>
+                </Menu>
             </div>
-            <Menu placement="left-start">
-              <MenuHandler>
-                <IconButton size="sm" variant="text" color="blue-gray">
-                  <EllipsisVerticalIcon
-                    strokeWidth={3}
-                    fill="currenColor"
-                    className="h-6 w-6"
-                  />
-                </IconButton>
-              </MenuHandler>
-              <MenuList>
-                <MenuItem>Action</MenuItem>
-                <MenuItem>Another Action</MenuItem>
-                <MenuItem>Something else here</MenuItem>
-              </MenuList>
-            </Menu>
           </CardHeader>
-          <CardBody className="overflow-x-scroll px-0 pt-0 pb-2">
+          <CardBody className="overflow-x-auto px-0 pt-0 pb-2">
             <table className="w-full min-w-[640px] table-auto">
               <thead>
                 <tr>
-                  {["companies", "members", "budget", "completion"].map(
+                  {["Equipe", "Tarefas Concluídas", "Progresso"].map(
                     (el) => (
                       <th
                         key={el}
-                        className="border-b border-blue-gray-50 py-3 px-6 text-left"
+                        className="border-b border-blue-gray-100 py-3 px-6 text-left bg-blue-gray-50/50"
                       >
                         <Typography
                           variant="small"
-                          className="text-[11px] font-medium uppercase text-blue-gray-400"
+                          className="text-xs font-semibold uppercase text-blue-gray-700"
                         >
                           {el}
                         </Typography>
@@ -124,129 +291,151 @@ export function Home() {
                 </tr>
               </thead>
               <tbody>
-                {projectsTableData.map(
-                  ({ img, name, members, budget, completion }, key) => {
-                    const className = `py-3 px-5 ${
-                      key === projectsTableData.length - 1
-                        ? ""
-                        : "border-b border-blue-gray-50"
-                    }`;
+                {teamRanking.length > 0 ? (
+                  teamRanking.map(
+                    ({ team_name, tasks_completed }, key) => {
+                      const className = `py-4 px-6 ${
+                        key === teamRanking.length - 1
+                          ? ""
+                          : "border-b border-blue-gray-50/50"
+                      }`;
+                      const maxTasks = Math.max(...teamRanking.map(e => e.tasks_completed));
+                      const completionPercentage = maxTasks > 0 ? (tasks_completed / maxTasks) * 100 : 0;
 
-                    return (
-                      <tr key={name}>
-                        <td className={className}>
-                          <div className="flex items-center gap-4">
-                            <Avatar src={img} alt={name} size="sm" />
+                      return (
+                        <tr key={team_name || key} className="hover:bg-blue-gray-50/30 transition-colors">
+                          <td className={className}>
+                            <div className="flex items-center gap-4">
+                              {tasks_completed > 0 ? (
+                                key === 0 ? (
+                                  <TrophyIcon className="h-7 w-7 text-yellow-500" />
+                                ) : key === 1 ? (
+                                  <TrophyIcon className="h-7 w-7 text-gray-500" />
+                                ) : key === 2 ? (
+                                  <TrophyIcon className="h-7 w-7 text-amber-800" />
+                                ) : (
+                                  <BuildingOfficeIcon className="h-7 w-7 text-indigo-500" />
+                                )
+                              ) : (
+                                <BuildingOfficeIcon className="h-7 w-7 text-indigo-500" />
+                              )}
+                              <Typography
+                                variant="h6"
+                                color="blue-gray"
+                                className="font-semibold"
+                              >
+                                {team_name || "N/A"}
+                              </Typography>
+                            </div>
+                          </td>
+                          <td className={className}>
                             <Typography
-                              variant="small"
-                              color="blue-gray"
-                              className="font-bold"
+                              variant="lead"
+                              className="text-base font-bold text-gray-800"
                             >
-                              {name}
+                              {tasks_completed || 0}
                             </Typography>
-                          </div>
-                        </td>
-                        <td className={className}>
-                          {members.map(({ img, name }, key) => (
-                            <Tooltip key={name} content={name}>
-                              <Avatar
-                                src={img}
-                                alt={name}
-                                size="xs"
-                                variant="circular"
-                                className={`cursor-pointer border-2 border-white ${
-                                  key === 0 ? "" : "-ml-2.5"
-                                }`}
+                          </td>
+                          <td className={className}>
+                            <div className="w-10/12">
+                              <Typography
+                                variant="small"
+                                className="mb-1 block text-xs font-medium text-blue-gray-600"
+                              >
+                                {completionPercentage.toFixed(0)}%
+                              </Typography>
+                              <Progress
+                                value={completionPercentage}
+                                variant="gradient"
+                                color={completionPercentage === 100 ? "green" : "blue"}
+                                className="h-2 rounded-full"
                               />
-                            </Tooltip>
-                          ))}
-                        </td>
-                        <td className={className}>
-                          <Typography
-                            variant="small"
-                            className="text-xs font-medium text-blue-gray-600"
-                          >
-                            {budget}
-                          </Typography>
-                        </td>
-                        <td className={className}>
-                          <div className="w-10/12">
-                            <Typography
-                              variant="small"
-                              className="mb-1 block text-xs font-medium text-blue-gray-600"
-                            >
-                              {completion}%
-                            </Typography>
-                            <Progress
-                              value={completion}
-                              variant="gradient"
-                              color={completion === 100 ? "green" : "blue"}
-                              className="h-1"
-                            />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  }
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    }
+                  )
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="py-5 px-5 text-center">
+                      <Typography className="text-sm font-normal text-blue-gray-500">
+                        Nenhuma equipe encontrada no ranking.
+                      </Typography>
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
           </CardBody>
         </Card>
-        <Card className="border border-blue-gray-100 shadow-sm">
+
+        <Card className="shadow-xl border border-blue-gray-50/10 rounded-xl">
           <CardHeader
             floated={false}
             shadow={false}
             color="transparent"
-            className="m-0 p-6"
+            className="m-0 p-6 pb-4"
           >
-            <Typography variant="h6" color="blue-gray" className="mb-2">
-              Orders Overview
+            <Typography variant="h5" color="blue-gray" className="mb-2 font-bold">
+              Atividades Recentes
             </Typography>
             <Typography
               variant="small"
               className="flex items-center gap-1 font-normal text-blue-gray-600"
             >
-              <ArrowUpIcon
-                strokeWidth={3}
-                className="h-3.5 w-3.5 text-green-500"
-              />
-              <strong>24%</strong> this month
+              <ClockIcon strokeWidth={2} className="h-4 w-4 text-blue-gray-400 mr-1" />
+              Últimas atualizações do sistema.
             </Typography>
           </CardHeader>
           <CardBody className="pt-0">
-            {ordersOverviewData.map(
-              ({ icon, color, title, description }, key) => (
-                <div key={title} className="flex items-start gap-4 py-3">
-                  <div
-                    className={`relative p-1 after:absolute after:-bottom-6 after:left-2/4 after:w-0.5 after:-translate-x-2/4 after:bg-blue-gray-50 after:content-[''] ${
-                      key === ordersOverviewData.length - 1
-                        ? "after:h-0"
-                        : "after:h-4/6"
-                    }`}
-                  >
-                    {React.createElement(icon, {
-                      className: `!w-5 !h-5 ${color}`,
-                    })}
-                  </div>
-                  <div>
-                    <Typography
-                      variant="small"
-                      color="blue-gray"
-                      className="block font-medium"
+            {recentActivities.length > 0 ? (
+              recentActivities.map(
+                ({ id, description, status, team, completed_at }, key) => (
+                  <div key={id} className="flex items-start gap-4 py-3 border-b border-blue-gray-50/50 last:border-b-0">
+                    <div
+                      className={`relative p-1 after:absolute after:-bottom-6 after:left-2/4 after:w-0.5 after:-translate-x-2/4 after:bg-blue-gray-100 after:content-[''] ${
+                        key === recentActivities.length - 1
+                          ? "after:h-0"
+                          : "after:h-4/6"
+                      }`}
                     >
-                      {title}
-                    </Typography>
-                    <Typography
-                      as="span"
-                      variant="small"
-                      className="text-xs font-medium text-blue-gray-500"
-                    >
-                      {description}
-                    </Typography>
+                      {status === 'concluida' ? (
+                        <CheckCircleIcon className="!w-6 !h-6 text-green-500" />
+                      ) : status === 'cancelada' ? (
+                        <span className="!w-6 !h-6 text-red-500 text-xl font-bold flex items-center justify-center">X</span>
+                      ) : status === 'a_fazer' ? (
+                        <ClockIcon className="!w-6 !h-6 text-orange-500" />
+                      ) : (
+                        <ClipboardDocumentCheckIcon className="!w-6 !h-6 text-blue-500" />
+                      )}
+                    </div>
+                    <div>
+                      <Typography
+                        variant="h6"
+                        color="blue-gray"
+                        className="block font-semibold"
+                      >
+                        {description || `Tarefa ${id}`}
+                        <span className="ml-2 font-normal text-gray-700 text-sm">
+                           {status === 'concluida' ? 'concluída' : status.replace(/_/g, ' ')}
+                        </span>
+                      </Typography>
+                      <Typography
+                        as="span"
+                        variant="small"
+                        className="text-xs font-medium text-blue-gray-500 mt-0.5"
+                      >
+                        {team ? `Equipe: ${team.name || team}` : ''} - {completed_at ? new Date(completed_at).toLocaleString('pt-BR') : 'Data Indefinida'}
+                      </Typography>
+                    </div>
                   </div>
-                </div>
+                )
               )
+            ) : (
+              <Typography className="text-sm font-normal text-blue-gray-500 py-5 text-center">
+                Nenhuma atividade recente encontrada.
+              </Typography>
             )}
           </CardBody>
         </Card>
