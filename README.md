@@ -1,4 +1,4 @@
-# Sistema de Gestão de Tarefas - Kanban
+# Sistema de Gestão de Tarefas - Rn Inox
 
 Este é um painel de controle (dashboard) responsivo baseado no template [Material Tailwind Dashboard](https://www.material-tailwind.com/) com funcionalidades personalizadas para gerenciamento de tarefas no estilo Kanban. Foi desenvolvido com **React**, **Tailwind CSS**, e integra com um backend em **Django REST Framework**.
 
