@@ -7,23 +7,24 @@ import { useState } from "react";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 
 
 const SignIn = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    const success = await login(username, password); // <- já retorna true/false
+    const success = await login(username, password);
     if (success) {
       toast.success("Login realizado com sucesso!");
       navigate("/dashboard/kanban");
     } else {
-     
       console.warn("Falha no login");
     }
   };
@@ -57,18 +58,33 @@ const SignIn = () => {
               onChange={(e) => setUsername(e.target.value)}
               required
             />
+
             <Typography variant="small" className="-mb-3 font-medium">
               Senha
             </Typography>
-            <Input
-              type="password"
-              size="lg"
-              label="Senha"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
+            <div className="relative">
+              <Input
+                type={showPassword ? "text" : "password"}
+                size="lg"
+                label="Senha"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="pr-10"
+              />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-600 hover:text-gray-800"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? (
+                  <EyeSlashIcon className="h-5 w-5" />
+                ) : (
+                  <EyeIcon className="h-5 w-5" />
+                )}
+              </button>
+            </div>
           </div>
 
           <Button className="mt-6" fullWidth type="submit">
