@@ -21,7 +21,7 @@ function PaginationControls({ currentPage, totalPages, onPageChange }) {
     }
 
     return (
-        <div className="flex items-center gap-2 p-2 justify-center">
+        <div className="flex items-right gap-2 p-2">
             <Button
                 variant="text"
                 className="flex items-center gap-1"
