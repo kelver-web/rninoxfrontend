@@ -3,15 +3,63 @@ import api from "@/services/api";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { toast } from 'react-toastify';
-import { ArrowDownTrayIcon, MinusCircleIcon } from '@heroicons/react/24/outline';
-import DeleteConfirmationModal from "@/components/kanban/DeleteConfirmationModal"; // Confirme o caminho correto
+import { ArrowDownTrayIcon, MinusCircleIcon, ArrowLongLeftIcon, ArrowLongRightIcon } from '@heroicons/react/24/outline';
+import DeleteConfirmationModal from "@/components/kanban/DeleteConfirmationModal";
+
+import { Button, IconButton } from '@material-tailwind/react';
+
 
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 
+function PaginationControls({ currentPage, totalPages, onPageChange }) {
+    const pageNumbers = [];
+    for (let i = 1; i <= totalPages; i++) {
+        pageNumbers.push(i);
+    }
+
+    return (
+        <div className="flex items-center justify-center gap-2 p-2">
+            <Button
+                variant="text"
+                className="flex items-center gap-2"
+                onClick={() => onPageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                color="gray"
+                size="sm"
+            >
+                <ArrowLongLeftIcon strokeWidth={2} className="h-4 w-4" /> Anterior
+            </Button>
+            <div className="flex items-center gap-2">
+                {pageNumbers.map((number) => (
+                    <IconButton
+                        key={number}
+                        variant={currentPage === number ? "filled" : "text"}
+                        color="gray"
+                        onClick={() => onPageChange(number)}
+                        className="w-7 h-7"
+                    >
+                        {number}
+                    </IconButton>
+                ))}
+            </div>
+            <Button
+                variant="text"
+                className="flex items-center gap-2"
+                onClick={() => onPageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                color="gray"
+                size="sm"
+            >
+                Próxima <ArrowLongRightIcon strokeWidth={2} className="h-4 w-4" />
+            </Button>
+        </div>
+    );
+}
+
 const MeasurementForm = () => {
-    // Inicialize todos os estados que serão mapeados como arrays vazios
+    // Estados principais
     const [works, setWorks] = useState([]);
     const [employees, setEmployees] = useState([]);
     const [measurements, setMeasurements] = useState([]);
@@ -33,63 +81,64 @@ const MeasurementForm = () => {
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
     const [measurementToDelete, setMeasurementToDelete] = useState(null);
 
-    // Adicionado estado de carregamento para melhor UX
     const [isLoading, setIsLoading] = useState(true);
+
+    // PAGINAÇÃO
+    const [currentPage, setCurrentPage] = useState(1);
+    const measurementsPerPage = 5;
+
+    // Sempre que filtros mudarem, volta para a página 1
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [selectedWorkFilter, selectedDateFilter]);
 
     // Função para carregar medições
     const loadMeasurements = async () => {
         try {
             const res = await api.get("/measurements/");
-            // **IMPORTANTE**: Verifique se res.data é um array antes de setar
             if (Array.isArray(res.data)) {
                 setMeasurements(res.data);
             } else {
                 console.error("Resposta de /measurements/ não é um array. Dados recebidos:", res.data);
-                setMeasurements([]); // Garante que seja um array vazio em caso de dados inesperados
+                setMeasurements([]);
                 toast.warn("Os dados das medições não vieram no formato esperado.");
             }
         } catch (error) {
             console.error("Erro ao carregar medições:", error);
             toast.error("Erro ao carregar medições.");
-            setMeasurements([]); // Garante que seja um array vazio em caso de erro
+            setMeasurements([]);
         }
     };
 
     useEffect(() => {
         const fetchData = async () => {
-            setIsLoading(true); // Inicia carregamento
+            setIsLoading(true);
             try {
                 const [worksRes, usersRes, itemChoicesRes] = await Promise.all([
                     api.get("/works/"),
                     api.get("/users/"),
                     api.get("/item-choices/")
                 ]);
-
-                // **CRÍTICO**: Verificações explícitas para garantir que os dados da API são arrays
                 setWorks(Array.isArray(worksRes.data) ? worksRes.data : []);
                 setEmployees(Array.isArray(usersRes.data) ? usersRes.data : []);
                 setItemTypeOptions(Array.isArray(itemChoicesRes.data.types) ? itemChoicesRes.data.types : []);
                 setItemLocalizationOptions(Array.isArray(itemChoicesRes.data.localizations) ? itemChoicesRes.data.localizations : []);
-                
-                await loadMeasurements(); // Aguarda o carregamento das medições
+                await loadMeasurements();
             } catch (error) {
                 console.error("Erro ao carregar dados iniciais:", error);
                 toast.error("Erro ao carregar dados iniciais. Verifique o servidor.");
-                // Em caso de erro, garantir que todos os estados de lista são arrays vazios
                 setWorks([]);
                 setEmployees([]);
                 setItemTypeOptions([]);
                 setItemLocalizationOptions([]);
                 setMeasurements([]);
             } finally {
-                setIsLoading(false); // Finaliza carregamento
+                setIsLoading(false);
             }
         };
         fetchData();
-    }, []); // Array de dependências vazio para rodar apenas uma vez na montagem
+    }, []);
 
-    // Efeito para garantir que selectedEmployee é revalidado se employees mudar
-    // Mantido como estava, pois a lógica parece adequada se não causa loops infinitos.
     useEffect(() => {
         if (employees.length > 0 && selectedEmployee) {
             if (!employees.some(emp => String(emp.id) === selectedEmployee)) {
@@ -99,11 +148,9 @@ const MeasurementForm = () => {
         }
     }, [employees, selectedEmployee]);
 
-    // Lida com a mudança nos campos de cada item
     const handleItemChange = (index, field, value) => {
         const newItems = [...items];
         if (field === "height_cm" || field === "width_cm") {
-            // Permite string vazia para o input, mas converte para Number para o estado
             newItems[index][field] = value === "" ? "" : Number(parseFloat(value));
         } else {
             newItems[index][field] = value;
@@ -111,7 +158,6 @@ const MeasurementForm = () => {
         setItems(newItems);
     };
 
-    // Adiciona um novo item à lista de medições
     const addItem = () => {
         setItems([
             ...items,
@@ -119,7 +165,6 @@ const MeasurementForm = () => {
         ]);
     };
 
-    // Remove um item da lista de medições
     const removeItem = (index) => {
         if (items.length === 1) {
             toast.warn("Deve haver pelo menos um item de medição.");
@@ -128,11 +173,9 @@ const MeasurementForm = () => {
         setItems(items.filter((_, i) => i !== index));
     };
 
-    // Lida com o envio do formulário de medição
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        // Validação aprimorada do formulário
         if (!selectedWork) {
             toast.error("Por favor, selecione uma Obra.");
             return;
@@ -145,7 +188,6 @@ const MeasurementForm = () => {
             toast.error("Por favor, selecione uma Data.");
             return;
         }
-        // Validação de itens individualmente: verifica se campos obrigatórios estão preenchidos
         if (items.length === 0 || items.some(item =>
             !item.identifier ||
             !item.type ||
@@ -156,8 +198,6 @@ const MeasurementForm = () => {
             toast.error("Por favor, preencha todos os campos obrigatórios para os Itens de Medição (Identificador, Tipo, Altura, Largura, Localização).");
             return;
         }
-
-        console.log("Valor de selectedEmployee antes do payload:", selectedEmployee);
 
         const payload = {
             employee: Number(selectedEmployee),
@@ -170,19 +210,16 @@ const MeasurementForm = () => {
                 width_cm: item.width_cm === "" ? null : parseFloat(item.width_cm)
             })),
         };
-        console.log("Payload enviado para salvar medição:", payload);
 
         try {
             const response = await api.post("/measurements/", payload);
-            console.log("Resposta do servidor:", response.data);
             toast.success("Medição salva com sucesso!");
-            // Resetar formulário
             setSelectedWork("");
             setSelectedEmployee("");
             setDateMeasurement("");
             setObservations("");
             setItems([{ identifier: "", type: "", height_cm: "", width_cm: "", localization: "", observations: "" }]);
-            loadMeasurements(); // Recarrega a lista de medições após o sucesso
+            loadMeasurements();
         } catch (error) {
             console.error("Erro ao salvar medição:", error.response?.data || error.message);
 
@@ -198,7 +235,6 @@ const MeasurementForm = () => {
                             } else if (typeof errorData[key] === 'string') {
                                 errorMessage += `${key}: ${errorData[key]}. `;
                             } else if (typeof errorData[key] === 'object' && errorData[key] !== null) {
-                                // Tratamento de erros aninhados, como 'items'
                                 if (key === 'items' && Array.isArray(errorData[key])) {
                                     errorData[key].forEach((itemError, itemIndex) => {
                                         if (typeof itemError === 'object' && itemError !== null) {
@@ -214,7 +250,6 @@ const MeasurementForm = () => {
                                 errorMessage += `${key}: ${errorData[key]}. `;
                             }
                         }
-                        // Limita o tamanho da mensagem de erro para não ficar muito longa
                         if (errorMessage.length > 500) {
                             errorMessage += "... (e outros erros)";
                             break;
@@ -228,32 +263,29 @@ const MeasurementForm = () => {
         }
     };
 
-    // Mapeia IDs para Nomes para os filtros e exibição
     const getWorkName = (workId) => {
-        // Usa o estado 'works' (que é garantido ser um array) para encontrar o nome
         const work = works.find(w => w.id === workId);
         return work ? work.name : `Obra ID ${workId}`;
     };
 
     const getEmployeeName = (employeeId) => {
-        // Usa o estado 'employees' (que é garantido ser um array) para encontrar o nome
         const employee = employees.find(emp => emp.id === employeeId);
-        // Prioriza full_name se existir, caso contrário usa username ou ID
         return employee ? (employee.full_name || employee.username || `ID: ${employee.id}`) : `Funcionário ID ${employeeId}`;
     };
 
-
-    // Filtra as medições com base nos filtros selecionados
+    // FILTRO E PAGINAÇÃO
     const filteredMeasurements = measurements.filter((m) => {
-        // Se m.work não for um ID numérico, pode haver um problema de dados vindo da API
-        // O `getWorkName` já lida com IDs desconhecidos.
-        const workNameForFilter = getWorkName(m.work); 
+        const workNameForFilter = getWorkName(m.work);
         const matchWork = selectedWorkFilter ? workNameForFilter === selectedWorkFilter : true;
         const matchDate = selectedDateFilter ? m.date_measurement === selectedDateFilter : true;
         return matchWork && matchDate;
     });
 
-    // Lida com a exclusão de uma medição (abre modal de confirmação)
+    const indexOfLast = currentPage * measurementsPerPage;
+    const indexOfFirst = indexOfLast - measurementsPerPage;
+    const currentMeasurements = filteredMeasurements.slice(indexOfFirst, indexOfLast);
+    const totalPages = Math.ceil(filteredMeasurements.length / measurementsPerPage);
+
     const handleDeleteMeasurement = (id) => {
         const measurement = measurements.find(m => m.id === id);
         if (measurement) {
@@ -262,24 +294,19 @@ const MeasurementForm = () => {
         }
     };
 
-    // Chamada quando o modal de exclusão confirma o sucesso
     const handleMeasurementDeletedSuccess = (deletedId) => {
-        loadMeasurements(); // Recarrega as medições para refletir a exclusão
+        loadMeasurements();
         toast.success(`Medição #${deletedId} excluída com sucesso!`);
         closeDeleteModal();
     };
 
-    // Fecha o modal de confirmação de exclusão
     const closeDeleteModal = () => {
         setDeleteModalOpen(false);
         setMeasurementToDelete(null);
     };
 
-    // Exporta uma única medição para Excel
     const exportSingleMeasurementToExcel = (measurement) => {
         const exportData = [];
-
-        // Garante que measurement.items é um array antes de iterar
         if (Array.isArray(measurement.items)) {
             measurement.items.forEach((item) => {
                 exportData.push({
@@ -288,7 +315,7 @@ const MeasurementForm = () => {
                     Funcionário: getEmployeeName(measurement.employee),
                     Data: measurement.date_measurement,
                     Identificador: item.identifier,
-                    Tipo: item.type, // Supondo que 'type' e 'localization' já são os labels/nomes
+                    Tipo: item.type,
                     Altura_cm: item.height_cm,
                     Largura_cm: item.width_cm,
                     Localização: item.localization,
@@ -296,51 +323,39 @@ const MeasurementForm = () => {
                 });
             });
         }
-
-
         const worksheet = XLSX.utils.json_to_sheet(exportData);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, `Medicao_ID_${measurement.id}`);
-
         const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
         const file = new Blob([excelBuffer], { type: "application/octet-stream" });
         saveAs(file, `Medicao_${measurement.id}_${getWorkName(measurement.work)}.xlsx`);
         toast.success(`Medição ${measurement.id} exportada para Excel!`);
     };
 
-    // Exporta uma única medição para PDF
     const exportSingleMeasurementToPdf = async (measurement) => {
         const input = document.getElementById(`measurement-card-${measurement.id}`);
         if (!input) {
             toast.error("Elemento da medição para exportar PDF não encontrado!");
             return;
         }
-
         toast.info(`Gerando PDF para Medição ${measurement.id}, aguarde...`);
-
         try {
-            // Aumentar a escala para melhor qualidade do PDF
-            const canvas = await html2canvas(input, { scale: 3, useCORS: true }); // useCORS é importante se tiver imagens externas
+            const canvas = await html2canvas(input, { scale: 3, useCORS: true });
             const imgData = canvas.toDataURL('image/png');
-
             const pdf = new jsPDF('p', 'mm', 'a4');
-            const imgWidth = 210; // A4 width in mm
-            const pageHeight = 297; // A4 height in mm
+            const imgWidth = 210;
+            const pageHeight = 297;
             const imgHeight = (canvas.height * imgWidth) / canvas.width;
             let heightLeft = imgHeight;
-
             let position = 0;
-
             pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
             heightLeft -= pageHeight;
-
             while (heightLeft >= 0) {
                 position = heightLeft - imgHeight;
                 pdf.addPage();
                 pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
                 heightLeft -= pageHeight;
             }
-
             pdf.save(`Medicao_${measurement.id}_${getWorkName(measurement.work)}.pdf`);
             toast.success(`PDF da Medição ${measurement.id} exportado com sucesso!`);
         } catch (error) {
@@ -349,7 +364,6 @@ const MeasurementForm = () => {
         }
     };
 
-    // Renderização condicional para carregamento - impede que o componente tente mapear dados antes de carregados
     if (isLoading) {
         return (
             <div className="flex justify-center items-center h-screen">
@@ -362,7 +376,6 @@ const MeasurementForm = () => {
         <div className="max-w-6xl mx-auto p-4">
             <form onSubmit={handleSubmit} className="bg-white p-6 rounded shadow-md">
                 <h2 className="text-lg font-semibold mb-4">Nova Medição de Obra</h2>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label htmlFor="workSelect" className="block text-sm mb-1">Obra</label>
@@ -374,35 +387,28 @@ const MeasurementForm = () => {
                             required
                         >
                             <option value="">Selecione</option>
-                            {/* **Verificação de Array**: Garantir que 'works' é um array antes de mapear */}
                             {Array.isArray(works) && works.map((work) => (
                                 <option key={work.id} value={work.id}>{work.name}</option>
                             ))}
                         </select>
                     </div>
-
                     <div>
                         <label htmlFor="employeeSelect" className="block text-sm mb-1">Funcionário</label>
                         <select
                             id="employeeSelect"
                             className="w-full border px-2 py-1 rounded"
                             value={selectedEmployee}
-                            onChange={(e) => {
-                                // `newValue` é a string do valor do option
-                                setSelectedEmployee(e.target.value);
-                            }}
+                            onChange={(e) => setSelectedEmployee(e.target.value)}
                             required
                         >
                             <option value="">Selecione</option>
-                            {/* **Verificação de Array**: Garantir que 'employees' é um array antes de mapear */}
                             {Array.isArray(employees) && employees.map((emp) => (
                                 <option key={emp.id} value={String(emp.id)}>
-                                    {emp.username || emp.full_name || `ID: ${emp.id}`} {/* Fallback para exibição */}
+                                    {emp.username || emp.full_name || `ID: ${emp.id}`}
                                 </option>
                             ))}
                         </select>
                     </div>
-
                     <div>
                         <label htmlFor="dateInput" className="block text-sm mb-1">Data</label>
                         <input
@@ -414,7 +420,6 @@ const MeasurementForm = () => {
                             required
                         />
                     </div>
-
                     <div className="md:col-span-2">
                         <label htmlFor="observationsTextarea" className="block text-sm mb-1">Observações</label>
                         <textarea
@@ -425,14 +430,11 @@ const MeasurementForm = () => {
                         />
                     </div>
                 </div>
-
                 <div className="mt-6">
                     <h3 className="font-medium mb-2">Itens de Medição</h3>
-                    {/* **Verificação de Array**: Garantir que 'items' é um array antes de mapear */}
                     {Array.isArray(items) && items.map((item, index) => (
                         <div key={index} className="grid grid-cols-1 md:grid-cols-6 gap-3 mb-3">
                             <input type="text" placeholder="Identificador" value={item.identifier} onChange={(e) => handleItemChange(index, "identifier", e.target.value)} className="border px-2 py-1 rounded" required />
-
                             <select
                                 className="border px-2 py-1 rounded"
                                 value={item.type}
@@ -440,17 +442,14 @@ const MeasurementForm = () => {
                                 required
                             >
                                 <option value="">Selecione Tipo</option>
-                                {/* **Verificação de Array**: Garantir que 'itemTypeOptions' é um array antes de mapear */}
                                 {Array.isArray(itemTypeOptions) && itemTypeOptions.map((typeOption) => (
                                     <option key={typeOption.value} value={typeOption.value}>
                                         {typeOption.label}
                                     </option>
                                 ))}
                             </select>
-
                             <input type="number" placeholder="Altura (cm)" value={item.height_cm} onChange={(e) => handleItemChange(index, "height_cm", e.target.value)} className="border px-2 py-1 rounded" required />
                             <input type="number" placeholder="Largura (cm)" value={item.width_cm} onChange={(e) => handleItemChange(index, "width_cm", e.target.value)} className="border px-2 py-1 rounded" required />
-
                             <select
                                 className="border px-2 py-1 rounded"
                                 value={item.localization}
@@ -458,14 +457,12 @@ const MeasurementForm = () => {
                                 required
                             >
                                 <option value="">Selecione Localização</option>
-                                {/* **Verificação de Array**: Garantir que 'itemLocalizationOptions' é um array antes de mapear */}
                                 {Array.isArray(itemLocalizationOptions) && itemLocalizationOptions.map((locOption) => (
                                     <option key={locOption.value} value={locOption.value}>
                                         {locOption.label}
                                     </option>
                                 ))}
                             </select>
-
                             <div className="flex gap-1 items-center">
                                 <input type="text" placeholder="Observações" value={item.observations} onChange={(e) => handleItemChange(index, "observations", e.target.value)} className="border px-1 py-1 rounded w-full" />
                                 <MinusCircleIcon onClick={() => removeItem(index)} className="h-7 w-7 text-red-500 cursor-pointer hover:text-red-600" />
@@ -476,14 +473,12 @@ const MeasurementForm = () => {
                         + Adicionar Item
                     </button>
                 </div>
-
                 <div className="mt-6 flex justify-end">
                     <button type="submit" className="px-2 py-1 bg-green-100 text-green-800 rounded hover:bg-green-200">
                         Salvar Medição
                     </button>
                 </div>
             </form>
-
             {/* Filtros e Indicadores */}
             <div className="mt-10">
                 <div className="flex flex-wrap gap-4 mb-6">
@@ -496,13 +491,11 @@ const MeasurementForm = () => {
                             onChange={(e) => setSelectedWorkFilter(e.target.value)}
                         >
                             <option value="">Todas</option>
-                           
                             {Array.isArray(filteredMeasurements) && Array.from(new Set(filteredMeasurements.map((m) => getWorkName(m.work)))).map((name, idx) => (
                                 <option key={idx} value={name}>{name}</option>
                             ))}
                         </select>
                     </div>
-
                     <div>
                         <label htmlFor="dateFilter" className="text-sm text-gray-600">Filtrar por data:</label>
                         <input
@@ -514,7 +507,6 @@ const MeasurementForm = () => {
                         />
                     </div>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                     <div className="bg-blue-100 text-blue-800 p-4 rounded shadow-sm text-center">
                         <p className="text-sm">Total de Medições</p>
@@ -523,22 +515,18 @@ const MeasurementForm = () => {
                     <div className="bg-green-100 text-green-800 p-4 rounded shadow-sm text-center">
                         <p className="text-sm">Total de Itens Medidos</p>
                         <p className="text-xl font-bold">
-                           
                             {Array.isArray(filteredMeasurements) ? filteredMeasurements.reduce((acc, m) => acc + (Array.isArray(m.items) ? m.items.length : 0), 0) : 0}
                         </p>
                     </div>
-                    <div className="flex items-end justify-end gap-2">
-                    </div>
+                    <div className="flex items-end justify-end gap-2"></div>
                 </div>
-
                 <div id="measurements-list-section">
                     {filteredMeasurements.length === 0 ? (
                         <p className="text-center text-gray-500">
                             Nenhuma medição encontrada com os filtros aplicados.
                         </p>
                     ) : (
-                       
-                        Array.isArray(filteredMeasurements) && filteredMeasurements.map((measurement) => (
+                        Array.isArray(currentMeasurements) && currentMeasurements.map((measurement) => (
                             <div key={measurement.id} id={`measurement-card-${measurement.id}`} className="bg-white border rounded shadow p-4 mb-6">
                                 <div className="flex justify-between items-center mb-2">
                                     <div>
@@ -576,7 +564,6 @@ const MeasurementForm = () => {
                                             </tr>
                                         </thead>
                                         <tbody>
-                                           
                                             {Array.isArray(measurement.items) && measurement.items.map((item, index) => (
                                                 <tr key={index} className="border-t">
                                                     <td className="px-2 py-1 border">{item.identifier}</td>
@@ -590,7 +577,6 @@ const MeasurementForm = () => {
                                         </tbody>
                                     </table>
                                 </div>
-                               
                                 <div className="flex justify-end gap-2 mt-4">
                                     <button
                                         onClick={() => exportSingleMeasurementToPdf(measurement)}
@@ -607,14 +593,21 @@ const MeasurementForm = () => {
                                         Excel
                                     </button>
                                 </div>
-                                
                             </div>
                         ))
                     )}
+                    {/* PAGINAÇÃO */}
+                    {filteredMeasurements.length > measurementsPerPage && (
+                        <PaginationControls
+                            currentPage={currentPage}
+                            totalPages={totalPages}
+                            onPageChange={(page) => {
+                                if (page >= 1 && page <= totalPages) setCurrentPage(page);
+                            }}
+                        />
+                    )}
                 </div>
             </div>
-
-           
             {deleteModalOpen && measurementToDelete && (
                 <DeleteConfirmationModal
                     isOpen={deleteModalOpen}
