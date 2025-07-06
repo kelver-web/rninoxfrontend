@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Typography,
   Card,
@@ -10,10 +10,13 @@ import {
   MenuList,
   MenuItem,
   Progress,
+  Button,
 } from "@material-tailwind/react";
 import {
   EllipsisVerticalIcon,
-  TrophyIcon
+  TrophyIcon,
+  ArrowLongLeftIcon,
+  ArrowLongRightIcon,
 } from "@heroicons/react/24/outline";
 import {
   ClockIcon,
@@ -26,6 +29,87 @@ import api from "@/services/api";
 import { toast } from "react-toastify";
 
 
+function PaginationControls({ currentPage, totalPages, onPageChange }) {
+  const pageNumbers = [];
+  
+  let startPage, endPage;
+  if (totalPages <= 5) {
+    
+    startPage = 1;
+    endPage = totalPages;
+  } else {
+    // Mais de 5 páginas
+    if (currentPage <= 3) {
+      startPage = 1;
+      endPage = 5;
+    } else if (currentPage + 2 >= totalPages) {
+      startPage = totalPages - 4;
+      endPage = totalPages;
+    } else {
+      startPage = currentPage - 2;
+      endPage = currentPage + 2;
+    }
+  }
+
+  for (let i = startPage; i <= endPage; i++) {
+    pageNumbers.push(i);
+  }
+
+  return (
+    <div className="flex items-center gap-1 p-1 justify-center">
+      <Button
+        variant="text"
+        className="flex items-center gap-1"
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        color="gray"
+        size="sm"
+      >
+        <ArrowLongLeftIcon strokeWidth={2} className="h-3 w-3" /> Anterior
+      </Button>
+      <div className="flex items-center gap-2">
+        {/* Botão para a primeira página e ellipsis se necessário */}
+        {startPage > 1 && (
+          <>
+            <IconButton variant="text" color="gray" onClick={() => onPageChange(1)}>1</IconButton>
+            {startPage > 2 && <Typography className="text-gray-500">...</Typography>}
+          </>
+        )}
+        {/* Botões das páginas visíveis */}
+        {pageNumbers.map((number) => (
+          <IconButton
+            key={number}
+            variant={currentPage === number ? "filled" : "text"}
+            color="gray"
+            onClick={() => onPageChange(number)}
+            className="w-4 h-4"
+          >
+            {number}
+          </IconButton>
+        ))}
+        {/* Botão para a última página e ellipsis se necessário */}
+        {endPage < totalPages && (
+          <>
+            {endPage < totalPages - 1 && <Typography className="text-gray-500">...</Typography>}
+            <IconButton variant="text" color="gray" onClick={() => onPageChange(totalPages)}>{totalPages}</IconButton>
+          </>
+        )}
+      </div>
+      <Button
+        variant="text"
+        className="flex items-center gap-1"
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        color="gray"
+        size="sm"
+      >
+        Próximo <ArrowLongRightIcon strokeWidth={2} className="h-3 w-3" />
+      </Button>
+    </div>
+  );
+}
+
+
 export function Home() {
   const [dashboardSummary, setDashboardSummary] = useState(null);
   const [teamRanking, setTeamRanking] = useState([]);
@@ -35,6 +119,10 @@ export function Home() {
   });
   const [allMonthlyTasksData, setAllMonthlyTasksData] = useState([]);
   const [recentActivities, setRecentActivities] = useState([]);
+
+  // --- Estados de Paginação para Atividades Recentes ---
+  const [currentPageActivities, setCurrentPageActivities] = useState(1);
+  const ITEMS_PER_PAGE_ACTIVITIES = 4; // Quantidade de atividades por página
 
   const taskStatusMap = {
     'a_fazer': 'A Fazer',
@@ -47,7 +135,7 @@ export function Home() {
 
   const fetchDashboardSummary = async () => {
     try {
-      const response = await api.get("/dashboard/summary/"); 
+      const response = await api.get("/dashboard/summary/");
       setDashboardSummary(response.data);
 
       const statusDataFromBackend = response.data?.tasks_by_status || {};
@@ -89,8 +177,10 @@ export function Home() {
 
   const fetchRecentActivities = async () => {
     try {
-      const tasksResponse = await api.get("/tasks/?status=concluida&limit=7&ordering=-completed_at");
+      // Ajuste o endpoint se necessário. Se as atividades não vêm de /tasks, mude aqui.
+      const tasksResponse = await api.get("/tasks/?limit=100&ordering=-completed_at"); // Busque mais atividades para paginação
       setRecentActivities(tasksResponse.data);
+      setCurrentPageActivities(1); // Resetar para a primeira página ao buscar novas atividades
     } catch (error) {
       console.error("Erro ao carregar atividades recentes:", error.response ? error.response.data : error.message);
       toast.error("Erro ao carregar atividades recentes.");
@@ -111,12 +201,12 @@ export function Home() {
     const labels = allMonthlyTasksData.map(item => {
         const [year, month, day] = item.mes.split('-').map(Number);
         const date = new Date(year, month - 1, day);
-        
+
         return date.toLocaleString('pt-BR', { month: 'short', year: '2-digit' });
     });
 
     const data = allMonthlyTasksData.map(item => item.count);
-    
+
     const total_tasks_completed_this_month = allMonthlyTasksData.length > 0
         ? allMonthlyTasksData[allMonthlyTasksData.length - 1].count
         : 0;
@@ -223,6 +313,16 @@ export function Home() {
       ),
     },
   ];
+
+  // --- Lógica de Paginação para Atividades Recentes ---
+  const indexOfLastActivity = currentPageActivities * ITEMS_PER_PAGE_ACTIVITIES;
+  const indexOfFirstActivity = indexOfLastActivity - ITEMS_PER_PAGE_ACTIVITIES;
+  const currentActivities = recentActivities.slice(indexOfFirstActivity, indexOfLastActivity);
+  const totalPagesActivities = Math.ceil(recentActivities.length / ITEMS_PER_PAGE_ACTIVITIES);
+
+  const handlePageChangeActivities = useCallback((pageNumber) => {
+    setCurrentPageActivities(pageNumber);
+  }, []);
 
   return (
     <div className="mt-12 mb-8 flex flex-col gap-12">
@@ -389,53 +489,63 @@ export function Home() {
             </Typography>
           </CardHeader>
           <CardBody className="pt-0">
-            {recentActivities.length > 0 ? (
-              recentActivities.map(
-                ({ id, description, status, team, completed_at }, key) => (
-                  <div key={id} className="flex items-start gap-4 py-3 border-b border-blue-gray-50/50 last:border-b-0">
-                    <div
-                      className={`relative p-1 after:absolute after:-bottom-6 after:left-2/4 after:w-0.5 after:-translate-x-2/4 after:bg-blue-gray-100 after:content-[''] ${
-                        key === recentActivities.length - 1
-                          ? "after:h-0"
-                          : "after:h-4/6"
-                      }`}
-                    >
-                      {status === 'concluida' ? (
-                        <CheckCircleIcon className="!w-6 !h-6 text-green-500" />
-                      ) : status === 'cancelada' ? (
-                        <span className="!w-6 !h-6 text-red-500 text-xl font-bold flex items-center justify-center">X</span>
-                      ) : status === 'a_fazer' ? (
-                        <ClockIcon className="!w-6 !h-6 text-orange-500" />
-                      ) : (
-                        <ClipboardDocumentCheckIcon className="!w-6 !h-6 text-blue-500" />
-                      )}
-                    </div>
-                    <div>
-                      <Typography
-                        variant="h6"
-                        color="blue-gray"
-                        className="block font-semibold"
-                      >
-                        {description || `Tarefa ${id}`}
-                        <span className="ml-2 font-normal text-gray-700 text-sm">
-                           {status === 'concluida' ? 'concluída' : status.replace(/_/g, ' ')}
-                        </span>
-                      </Typography>
-                      <Typography
-                        as="span"
-                        variant="small"
-                        className="text-xs font-medium text-blue-gray-500 mt-0.5"
-                      >
-                        {team ? `Equipe: ${team.name || team}` : ''} - {completed_at ? new Date(completed_at).toLocaleString('pt-BR') : 'Data Indefinida'}
-                      </Typography>
-                    </div>
-                  </div>
-                )
-              )
-            ) : (
+            {recentActivities.length === 0 ? (
               <Typography className="text-sm font-normal text-blue-gray-500 py-5 text-center">
                 Nenhuma atividade recente encontrada.
               </Typography>
+            ) : (
+              <> {/* Fragment para agrupar a lista e os controles de paginação */}
+                {currentActivities.map( // Agora mapeia `currentActivities`
+                  ({ id, description, status, team, completed_at }, key) => (
+                    <div key={id} className="flex items-start gap-4 py-3 border-b border-blue-gray-50/50 last:border-b-0">
+                      <div
+                        className={`relative p-1 after:absolute after:-bottom-6 after:left-2/4 after:w-0.5 after:-translate-x-2/4 after:bg-blue-gray-100 after:content-[''] ${
+                          key === currentActivities.length - 1 // A linha só vai até o último item da PÁGINA atual
+                            ? "after:h-0"
+                            : "after:h-4/6"
+                        }`}
+                      >
+                        {status === 'concluida' ? (
+                          <CheckCircleIcon className="!w-6 !h-6 text-green-500" />
+                        ) : status === 'cancelada' ? (
+                          <span className="!w-6 !h-6 text-red-500 text-xl font-bold flex items-center justify-center">X</span>
+                        ) : status === 'a_fazer' ? (
+                          <ClockIcon className="!w-6 !h-6 text-orange-500" />
+                        ) : (
+                          <ClipboardDocumentCheckIcon className="!w-6 !h-6 text-blue-500" />
+                        )}
+                      </div>
+                      <div>
+                        <Typography
+                          variant="h6"
+                          color="blue-gray"
+                          className="block font-semibold"
+                        >
+                          {description || `Tarefa ${id}`}
+                          <span className="ml-2 font-normal text-gray-700 text-sm">
+                             {status === 'concluida' ? 'concluída' : status.replace(/_/g, ' ')}
+                          </span>
+                        </Typography>
+                        <Typography
+                          as="span"
+                          variant="small"
+                          className="text-xs font-medium text-blue-gray-500 mt-0.5"
+                        >
+                          {team ? `Equipe: ${team.name || team}` : ''} - {completed_at ? new Date(completed_at).toLocaleString('pt-BR') : 'Data Indefinida'}
+                        </Typography>
+                      </div>
+                    </div>
+                  )
+                )}
+                {/* Controles de Paginação para Atividades Recentes */}
+                {totalPagesActivities > 1 && (
+                    <PaginationControls
+                        currentPage={currentPageActivities}
+                        totalPages={totalPagesActivities}
+                        onPageChange={handlePageChangeActivities}
+                    />
+                )}
+              </>
             )}
           </CardBody>
         </Card>
