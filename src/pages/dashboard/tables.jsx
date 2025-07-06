@@ -1,29 +1,77 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react"; // Adicionado useCallback
 import {
   Card,
   CardHeader,
   CardBody,
   Typography,
-  Avatar,
   Chip,
   Tooltip,
   IconButton,
-  Progress,
+  Button, // Adicionado para os botões de paginação
 } from "@material-tailwind/react";
 import {
   PencilIcon,
   TrashIcon,
   UserIcon,
   CubeTransparentIcon,
-  ClipboardDocumentListIcon, // Para Measurements/Reports
-  BuildingOffice2Icon, // Para Works/Addresses
-  UsersIcon, // Para Teams
-  TagIcon, // Para Users
+  ClipboardDocumentListIcon,
+  BuildingOffice2Icon,
+  UsersIcon,
+  TagIcon,
+  ArrowLongLeftIcon, // Ícones para paginação
+  ArrowLongRightIcon, // Ícones para paginação
 } from "@heroicons/react/24/outline";
 import api from "@/services/api";
 import { toast } from "react-toastify";
 
+// --- COMPONENTE AUXILIAR DE CONTROLES DE PAGINAÇÃO ---
+function PaginationControls({ currentPage, totalPages, onPageChange }) {
+  const pageNumbers = [];
+  for (let i = 1; i <= totalPages; i++) {
+    pageNumbers.push(i);
+  }
+
+  return (
+    <div className="flex items-center gap-2 p-1 justify-center">
+      <Button
+        variant="text"
+        className="flex items-center gap-1"
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={currentPage === 1}
+        color="gray"
+        size="sm"
+      >
+        <ArrowLongLeftIcon strokeWidth={2} className="h-4 w-4" /> Anterior
+      </Button>
+      <div className="flex items-center gap-1">
+        {pageNumbers.map((number) => (
+          <IconButton
+            key={number}
+            variant={currentPage === number ? "filled" : "text"}
+            color="gray"
+            onClick={() => onPageChange(number)}
+            className="w-6 h-6"
+          >
+            {number}
+          </IconButton>
+        ))}
+      </div>
+      <Button
+        variant="text"
+        className="flex items-center gap-2"
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={currentPage === totalPages}
+        color="gray"
+        size="sm"
+      >
+        Próximo <ArrowLongRightIcon strokeWidth={2} className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 export function Tables() {
+  // Estados para os dados
   const [tasks, setTasks] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [measurements, setMeasurements] = useState([]);
@@ -33,8 +81,19 @@ export function Tables() {
   const [works, setWorks] = useState([]);
   const [addresses, setAddresses] = useState([]);
 
-  // --- Funções de Fetch para cada Endpoint ---
+  // --- Estados de Paginação para CADA TABELA ---
+  const ITEMS_PER_PAGE = 5; // Você pode ajustar isso por tabela se quiser
 
+  const [currentPageTasks, setCurrentPageTasks] = useState(1);
+  const [currentPageVehicles, setCurrentPageVehicles] = useState(1);
+  const [currentPageMeasurements, setCurrentPageMeasurements] = useState(1);
+  const [currentPageReports, setCurrentPageReports] = useState(1);
+  const [currentPageTeams, setCurrentPageTeams] = useState(1);
+  const [currentPageUsers, setCurrentPageUsers] = useState(1);
+  const [currentPageWorks, setCurrentPageWorks] = useState(1);
+  const [currentPageAddresses, setCurrentPageAddresses] = useState(1);
+
+  // --- Funções de Fetch para cada Endpoint (inalteradas) ---
   const fetchTasks = async () => {
     try {
       const response = await api.get("/tasks/");
@@ -135,19 +194,70 @@ export function Tables() {
     fetchAddresses();
   }, []); // Array de dependências vazio para rodar apenas uma vez na montagem
 
-  // --- Cabeçalhos das Tabelas ---
+  // --- Lógica de Paginação para CADA TABELA ---
+
+  // Tarefas
+  const indexOfLastTask = currentPageTasks * ITEMS_PER_PAGE;
+  const indexOfFirstTask = indexOfLastTask - ITEMS_PER_PAGE;
+  const currentTasks = tasks.slice(indexOfFirstTask, indexOfLastTask);
+  const totalPagesTasks = Math.ceil(tasks.length / ITEMS_PER_PAGE);
+
+  // Veículos
+  const indexOfLastVehicle = currentPageVehicles * ITEMS_PER_PAGE;
+  const indexOfFirstVehicle = indexOfLastVehicle - ITEMS_PER_PAGE;
+  const currentVehicles = vehicles.slice(indexOfFirstVehicle, indexOfLastVehicle);
+  const totalPagesVehicles = Math.ceil(vehicles.length / ITEMS_PER_PAGE);
+
+  // Medições
+  const indexOfLastMeasurement = currentPageMeasurements * ITEMS_PER_PAGE;
+  const indexOfFirstMeasurement = indexOfLastMeasurement - ITEMS_PER_PAGE;
+  const currentMeasurements = measurements.slice(indexOfFirstMeasurement, indexOfLastMeasurement);
+  const totalPagesMeasurements = Math.ceil(measurements.length / ITEMS_PER_PAGE);
+
+  // Relatórios
+  const indexOfLastReport = currentPageReports * ITEMS_PER_PAGE;
+  const indexOfFirstReport = indexOfLastReport - ITEMS_PER_PAGE;
+  const currentReports = reports.slice(indexOfFirstReport, indexOfLastReport);
+  const totalPagesReports = Math.ceil(reports.length / ITEMS_PER_PAGE);
+
+  // Equipes
+  const indexOfLastTeam = currentPageTeams * ITEMS_PER_PAGE;
+  const indexOfFirstTeam = indexOfLastTeam - ITEMS_PER_PAGE;
+  const currentTeams = teams.slice(indexOfFirstTeam, indexOfLastTeam);
+  const totalPagesTeams = Math.ceil(teams.length / ITEMS_PER_PAGE);
+
+  // Usuários
+  const indexOfLastUser = currentPageUsers * ITEMS_PER_PAGE;
+  const indexOfFirstUser = indexOfLastUser - ITEMS_PER_PAGE;
+  const currentUsers = users.slice(indexOfFirstUser, indexOfLastUser);
+  const totalPagesUsers = Math.ceil(users.length / ITEMS_PER_PAGE);
+
+  // Obras
+  const indexOfLastWork = currentPageWorks * ITEMS_PER_PAGE;
+  const indexOfFirstWork = indexOfLastWork - ITEMS_PER_PAGE;
+  const currentWorks = works.slice(indexOfFirstWork, indexOfLastWork);
+  const totalPagesWorks = Math.ceil(works.length / ITEMS_PER_PAGE);
+
+  // Endereços
+  const indexOfLastAddress = currentPageAddresses * ITEMS_PER_PAGE;
+  const indexOfFirstAddress = indexOfLastAddress - ITEMS_PER_PAGE;
+  const currentAddresses = addresses.slice(indexOfFirstAddress, indexOfLastAddress);
+  const totalPagesAddresses = Math.ceil(addresses.length / ITEMS_PER_PAGE);
+
+
+  // --- Cabeçalhos das Tabelas (inalterados) ---
   const taskTableHeaders = [
     "Tarefa", "Equipe", "Obra", "Veículo", "Funcionários", "Status", "Prazo Estimado", "Ações"
   ];
-  const vehicleTableHeaders = ["Marca", "Modelo", "Placa", "Status", "Ações"]; // Ajustado para incluir Status
+  const vehicleTableHeaders = ["Marca", "Modelo", "Placa", "Status", "Ações"];
   const measurementTableHeaders = ["Medição", "Valor", "Unidade", "Tarefa", "Data", "Ações"];
   const reportTableHeaders = ["Relatório", "Tipo", "Obra", "Funcionário", "Data", "Ações"];
-  const teamTableHeaders = ["Equipe", "Funcionários", "Descrição", "Ações"]; // Ajustado para "Funcionários"
+  const teamTableHeaders = ["Equipe", "Funcionários", "Descrição", "Ações"];
   const userTableHeaders = ["Usuário", "Email", "Ativo?", "Ações"];
   const workTableHeaders = ["Obra", "Endereço", "Cliente", "Telefone", "Status", "Ações"];
   const addressTableHeaders = ["Endereço", "Cidade", "Estado", "CEP", "Ações"];
 
-  // --- Funções Auxiliares para Cores de Chips ---
+  // --- Funções Auxiliares para Cores de Chips (inalteradas) ---
   const getTaskStatusColor = (status) => {
     switch (status) {
       case "concluida": return "green";
@@ -199,8 +309,9 @@ export function Tables() {
               </tr>
             </thead>
             <tbody>
-              {tasks.map((task, key) => {
-                const className = `py-3 px-5 ${key === tasks.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+              {/* Usa os dados da página atual */}
+              {currentTasks.map((task, key) => {
+                const className = `py-3 px-5 ${key === currentTasks.length - 1 ? "" : "border-b border-blue-gray-50"}`;
                 return (
                   <tr key={task.id}>
                     <td className={className}>
@@ -281,6 +392,12 @@ export function Tables() {
             </tbody>
           </table>
         </CardBody>
+        {/* Controles de Paginação para Tarefas */}
+        <PaginationControls
+          currentPage={currentPageTasks}
+          totalPages={totalPagesTasks}
+          onPageChange={setCurrentPageTasks}
+        />
       </Card>
 
       {/* --- Tabela de Veículos --- */}
@@ -304,8 +421,8 @@ export function Tables() {
               </tr>
             </thead>
             <tbody>
-              {vehicles.map((vehicle, key) => {
-                const className = `py-3 px-5 ${key === vehicles.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+              {currentVehicles.map((vehicle, key) => {
+                const className = `py-3 px-5 ${key === currentVehicles.length - 1 ? "" : "border-b border-blue-gray-50"}`;
                 const vehicleStatus = vehicle.status || "desconhecido";
                 return (
                   <tr key={vehicle.id}>
@@ -356,6 +473,12 @@ export function Tables() {
             </tbody>
           </table>
         </CardBody>
+        {/* Controles de Paginação para Veículos */}
+        <PaginationControls
+          currentPage={currentPageVehicles}
+          totalPages={totalPagesVehicles}
+          onPageChange={setCurrentPageVehicles}
+        />
       </Card>
 
       {/* --- Tabela de Medições --- */}
@@ -379,8 +502,8 @@ export function Tables() {
               </tr>
             </thead>
             <tbody>
-              {measurements.map((measurement, key) => {
-                const className = `py-3 px-5 ${key === measurements.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+              {currentMeasurements.map((measurement, key) => {
+                const className = `py-3 px-5 ${key === currentMeasurements.length - 1 ? "" : "border-b border-blue-gray-50"}`;
                 return (
                   <tr key={measurement.id}>
                     <td className={className}>
@@ -436,6 +559,12 @@ export function Tables() {
             </tbody>
           </table>
         </CardBody>
+        {/* Controles de Paginação para Medições */}
+        <PaginationControls
+          currentPage={currentPageMeasurements}
+          totalPages={totalPagesMeasurements}
+          onPageChange={setCurrentPageMeasurements}
+        />
       </Card>
 
       {/* --- Tabela de Relatórios --- */}
@@ -459,8 +588,8 @@ export function Tables() {
               </tr>
             </thead>
             <tbody>
-              {reports.map((report, key) => {
-                const className = `py-3 px-5 ${key === reports.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+              {currentReports.map((report, key) => {
+                const className = `py-3 px-5 ${key === currentReports.length - 1 ? "" : "border-b border-blue-gray-50"}`;
                 return (
                   <tr key={report.id}>
                     <td className={className}>
@@ -516,6 +645,12 @@ export function Tables() {
             </tbody>
           </table>
         </CardBody>
+        {/* Controles de Paginação para Relatórios */}
+        <PaginationControls
+          currentPage={currentPageReports}
+          totalPages={totalPagesReports}
+          onPageChange={setCurrentPageReports}
+        />
       </Card>
 
       {/* --- Tabela de Equipes --- */}
@@ -539,8 +674,8 @@ export function Tables() {
               </tr>
             </thead>
             <tbody>
-              {teams.map((team, key) => {
-                const className = `py-3 px-5 ${key === teams.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+              {currentTeams.map((team, key) => {
+                const className = `py-3 px-5 ${key === currentTeams.length - 1 ? "" : "border-b border-blue-gray-50"}`;
                 return (
                   <tr key={team.id}>
                     <td className={className}>
@@ -553,7 +688,6 @@ export function Tables() {
                     </td>
 
                     <td className={className}>
-                      {/* CORREÇÃO AQUI para exibir os membros */}
                       <div className="flex flex-col gap-0.5">
                         {team.members && team.members.length > 0 ? (
                           team.members.map((member, idx) => (
@@ -593,6 +727,12 @@ export function Tables() {
             </tbody>
           </table>
         </CardBody>
+        {/* Controles de Paginação para Equipes */}
+        <PaginationControls
+          currentPage={currentPageTeams}
+          totalPages={totalPagesTeams}
+          onPageChange={setCurrentPageTeams}
+        />
       </Card>
 
       {/* --- Tabela de Usuários --- */}
@@ -616,8 +756,8 @@ export function Tables() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user, key) => {
-                const className = `py-3 px-5 ${key === users.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+              {currentUsers.map((user, key) => {
+                const className = `py-3 px-5 ${key === currentUsers.length - 1 ? "" : "border-b border-blue-gray-50"}`;
                 return (
                   <tr key={user.id}>
                     <td className={className}>
@@ -661,6 +801,12 @@ export function Tables() {
             </tbody>
           </table>
         </CardBody>
+        {/* Controles de Paginação para Usuários */}
+        <PaginationControls
+          currentPage={currentPageUsers}
+          totalPages={totalPagesUsers}
+          onPageChange={setCurrentPageUsers}
+        />
       </Card>
 
       {/* --- Tabela de Obras --- */}
@@ -684,8 +830,8 @@ export function Tables() {
               </tr>
             </thead>
             <tbody>
-              {works.map((work, key) => {
-                const className = `py-3 px-5 ${key === works.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+              {currentWorks.map((work, key) => {
+                const className = `py-3 px-5 ${key === currentWorks.length - 1 ? "" : "border-b border-blue-gray-50"}`;
                 const workStatus = work.status || "desconhecido";
                 return (
                   <tr key={work.id}>
@@ -698,7 +844,6 @@ export function Tables() {
                       </div>
                     </td>
                     <td className={className}>
-                      {/* Corrigido para address.street */}
                       <Typography className="text-xs font-semibold text-blue-gray-600">
                         {work.address ? `${work.address.street || "N/A"}, ${work.address.city || "N/A"}` : "N/A"}
                       </Typography>
@@ -741,6 +886,12 @@ export function Tables() {
             </tbody>
           </table>
         </CardBody>
+        {/* Controles de Paginação para Obras */}
+        <PaginationControls
+          currentPage={currentPageWorks}
+          totalPages={totalPagesWorks}
+          onPageChange={setCurrentPageWorks}
+        />
       </Card>
 
       {/* --- Tabela de Endereços --- */}
@@ -764,15 +915,15 @@ export function Tables() {
               </tr>
             </thead>
             <tbody>
-              {addresses.map((address, key) => {
-                const className = `py-3 px-5 ${key === addresses.length - 1 ? "" : "border-b border-blue-gray-50"}`;
+              {currentAddresses.map((address, key) => {
+                const className = `py-3 px-5 ${key === currentAddresses.length - 1 ? "" : "border-b border-blue-gray-50"}`;
                 return (
                   <tr key={address.id}>
                     <td className={className}>
                       <div className="flex items-center gap-4">
                         <BuildingOffice2Icon className="h-5 w-5 text-blue-gray-500" />
                         <Typography variant="small" color="blue-gray" className="font-semibold">
-                          {address.street || "N/A"}, {address.number || "S/N"}
+                          {address.street || "N/A"}
                         </Typography>
                       </div>
                     </td>
@@ -811,9 +962,13 @@ export function Tables() {
             </tbody>
           </table>
         </CardBody>
+        {/* Controles de Paginação para Endereços */}
+        <PaginationControls
+          currentPage={currentPageAddresses}
+          totalPages={totalPagesAddresses}
+          onPageChange={setCurrentPageAddresses}
+        />
       </Card>
     </div>
   );
 }
-
-export default Tables;
