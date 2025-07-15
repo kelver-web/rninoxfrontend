@@ -90,7 +90,7 @@ export const routes = [
       {
         icon: <Cog6ToothIcon {...icon} />,
         name: "Administração",
-        path: "http://localhost:8000/admin",
+        path: "https://rninox-b774b03b3a02.herokuapp.com/api/",
         external: true,
       },
       {
